@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="referrer" content="no-referrer">
+  <title>Local Video Translator</title>
+  <style nonce="__NONCE__">
+    :root {
+      --bg: #0b1020; --panel: #121a2e; --panel2: #0d1424; --line: #26324f;
+      --text: #e8edf7; --muted: #98a4be; --accent: #6366f1; --accent2: #818cf8;
+      --good: #34d399; --bad: #f87171; --warn: #fbbf24;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      background: var(--bg); color: var(--text);
+      font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", Ubuntu, sans-serif;
+      display: flex; flex-direction: column;
+    }
+    .hidden { display: none !important; }
+    .muted { color: var(--muted); }
+
+    /* ---- top bar ---- */
+    .top {
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      padding: 10px 18px; background: var(--panel); border-bottom: 1px solid var(--line); flex: none;
+    }
+    .top h1 { font-size: 17px; margin: 0; font-weight: 650; }
+    .badge {
+      font-size: 11px; padding: 2px 10px; border-radius: 99px;
+      background: rgba(52, 211, 153, .12); color: var(--good); border: 1px solid rgba(52, 211, 153, .4);
+    }
+    .top p { margin: 0; font-size: 12px; color: var(--muted); }
+
+    /* ---- layout ---- */
+    .layout {
+      flex: 1; min-height: 0; padding: 14px; gap: 14px;
+      display: grid; grid-template-columns: minmax(0, 1fr) 440px;
+    }
+    .stage {
+      position: relative; min-height: 0; overflow: hidden;
+      background: #000; border: 1px solid var(--line); border-radius: 12px;
+    }
+    .stage video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
+    video::cue { font-size: 24px; line-height: 1.3; color: #fff; background: rgba(0, 0, 0, .8); }
+    .placeholder {
+      position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
+      justify-content: center; text-align: center; gap: 10px; padding: 24px;
+      background: radial-gradient(circle at 50% 40%, #151f3b, #070b17);
+    }
+    .placeholder h2 { margin: 0; font-size: 20px; }
+    .placeholder p { margin: 0; max-width: 420px; color: var(--muted); }
+
+    .side { display: flex; flex-direction: column; gap: 14px; min-height: 0; overflow: auto; padding-right: 2px; }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+
+    /* ---- steps ---- */
+    .steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 18px; }
+    .stepHead { display: flex; align-items: center; gap: 10px; font-weight: 650; font-size: 15px; margin-bottom: 8px; }
+    .num {
+      width: 26px; height: 26px; border-radius: 50%; flex: none;
+      display: grid; place-items: center; background: var(--accent); font-size: 13px; font-weight: 700;
+    }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+    select, input[type=text] {
+      width: 100%; padding: 9px 10px; font: inherit; color: var(--text);
+      background: var(--panel2); border: 1px solid var(--line); border-radius: 8px;
+    }
+    select:focus, input[type=text]:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+    select:disabled { opacity: .55; }
+    input[type=file] { display: none; }
+
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 9px 14px; font: inherit; font-weight: 600; color: var(--text); cursor: pointer;
+      background: #1b2644; border: 1px solid var(--line); border-radius: 9px;
+    }
+    .btn:hover { background: #243158; }
+    .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .btn.primary:hover { background: var(--accent2); border-color: var(--accent2); }
+    .btn.big { width: 100%; padding: 13px; font-size: 16px; }
+    .btn.danger { background: rgba(248, 113, 113, .12); border-color: rgba(248, 113, 113, .5); color: #fecaca; }
+    .btn.good { background: rgba(52, 211, 153, .14); border-color: rgba(52, 211, 153, .5); color: #a7f3d0; }
+    .btn:disabled, .btn.disabled { opacity: .4; cursor: not-allowed; pointer-events: none; }
+    .fileRow { display: flex; align-items: center; gap: 10px; }
+    #fileName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+    #hint { margin-top: 8px; font-size: 12px; }
+
+    /* ---- progress / messages ---- */
+    #progressBox { margin-top: 16px; }
+    .bar { height: 9px; background: #1b2644; border-radius: 99px; overflow: hidden; }
+    .bar > div { height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+    .progressTop { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 6px; font-size: 12px; color: var(--muted); }
+    .msg { border-radius: 9px; padding: 10px 12px; font-size: 13px; margin-top: 12px; }
+    .msg.err { background: rgba(248, 113, 113, .12); border: 1px solid rgba(248, 113, 113, .5); color: #fecaca; }
+    .msg.warn { background: rgba(251, 191, 36, .1); border: 1px solid rgba(251, 191, 36, .4); color: #fde68a; }
+    .msg.ok { background: rgba(52, 211, 153, .1); border: 1px solid rgba(52, 211, 153, .4); color: #a7f3d0; }
+
+    .resultRow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+    .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+    .seg button { padding: 7px 12px; font: inherit; color: var(--muted); background: transparent; border: 0; cursor: pointer; }
+    .seg button.on { background: var(--accent); color: #fff; }
+
+    details { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
+    summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+    details .row { margin-top: 10px; }
+
+    /* ---- transcript ---- */
+    .transcript { flex: 1; min-height: 260px; display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+    .thead { padding: 12px 14px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+    .thead .line { display: flex; align-items: center; justify-content: space-between; font-weight: 650; }
+    .count { font: 12px ui-monospace, monospace; color: var(--muted); font-weight: 400; }
+    .list { flex: 1; overflow: auto; padding: 10px; display: flex; flex-direction: column; gap: 6px; position: relative; }
+    .card.done .steps { display: none; }
+    .item { padding: 8px 10px; background: var(--panel2); border: 1px solid var(--line); border-radius: 9px; cursor: pointer; }
+    .item:hover { border-color: #41538a; }
+    .item.active { border-color: var(--accent2); background: #1a2250; }
+    .item .t { font: 11px ui-monospace, monospace; color: var(--muted); }
+    .item p { margin: 2px 0 0; white-space: pre-line; overflow-wrap: anywhere; }
+    mark { background: rgba(129, 140, 248, .45); color: #fff; border-radius: 3px; padding: 0 2px; }
+    .notice { margin: auto; text-align: center; color: var(--muted); padding: 24px; }
+    .notice p { margin: 4px 0; }
+    .notice .big { font-weight: 650; color: var(--text); }
+
+    .toast {
+      position: fixed; right: 16px; bottom: 16px; max-width: 360px; padding: 10px 14px;
+      background: #1b2644; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, .4);
+      opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 10;
+    }
+    .toast.show { opacity: 1; }
+
+    @media (max-width: 960px) {
+      body { height: auto; min-height: 100%; }
+      .layout { grid-template-columns: 1fr; }
+      .stage { height: 52vh; }
+      .side { overflow: visible; }
+    }
+  </style>
+</head>
+<body>
+
+  <header class="top">
+    <h1>Local Video Translator</h1>
+    <span class="badge">Runs only on this computer</span>
+    <p>Your video goes only to a program on this computer (127.0.0.1). Nothing is sent to the internet.</p>
+  </header>
+
+  <main class="layout">
+
+    <!-- Video -->
+    <section class="stage">
+      <video id="mainVideo" controls playsinline class="hidden"></video>
+      <div id="placeholder" class="placeholder">
+        <h2>Translate a video, privately</h2>
+        <p>Follow the 3 steps (they are next to this box, or below it on a small screen). When it is finished, press play and the translated text shows on the video.</p>
+      </div>
+    </section>
+
+    <!-- Controls + transcript -->
+    <aside class="side">
+
+      <div class="card" id="setupCard">
+        <ol class="steps">
+          <li>
+            <div class="stepHead"><span class="num">1</span>Choose your video</div>
+            <div class="fileRow">
+              <label class="btn" id="chooseLabel">Choose file ...
+                <input type="file" id="videoInput" accept="video/*,audio/*,.mkv">
+              </label>
+              <span id="fileName" class="muted">No file chosen</span>
+            </div>
+          </li>
+          <li>
+            <div class="stepHead"><span class="num">2</span>Pick the languages</div>
+            <div class="row">
+              <label class="field">Spoken in the video
+                <select id="sourceSel"><option value="auto">Auto-detect</option></select>
+              </label>
+              <label class="field">Translate to
+                <select id="targetSel"></select>
+              </label>
+            </div>
+          </li>
+          <li>
+            <div class="stepHead"><span class="num">3</span>Start</div>
+            <button id="startBtn" class="btn primary big" disabled>Start translating</button>
+            <button id="cancelBtn" class="btn danger big hidden">Cancel</button>
+            <div id="hint" class="muted">First, choose a video (step 1).</div>
+          </li>
+        </ol>
+
+        <div id="progressBox" class="hidden"></div>
+        <div id="errorBox" class="msg err hidden"></div>
+        <div id="warnBox" class="msg warn hidden"></div>
+
+        <div id="resultBox" class="hidden">
+          <div id="infoLine" class="msg ok"></div>
+          <div class="resultRow">
+            <span class="muted">Show:</span>
+            <div class="seg" id="modeSeg">
+              <button type="button" data-mode="text" class="on">Translation</button>
+              <button type="button" data-mode="src">Original</button>
+              <button type="button" data-mode="both">Both</button>
+            </div>
+          </div>
+          <div class="resultRow">
+            <button id="srtBtn" class="btn good" type="button">Download subtitles (.srt)</button>
+            <button id="txtBtn" class="btn" type="button">Save as text</button>
+            <button id="copyBtn" class="btn" type="button">Copy</button>
+          </div>
+          <div class="resultRow">
+            <button id="againBtn" class="btn" type="button">Translate another video / change languages</button>
+          </div>
+        </div>
+
+        <details>
+          <summary>Advanced</summary>
+          <div class="row">
+            <label class="field">Speech model
+              <select id="whisperSel"></select>
+            </label>
+            <div class="field">Open an existing .srt / .vtt
+              <label class="btn" id="srtOpenLabel">Open file ...
+                <input type="file" id="subtitleInput" accept=".srt,.vtt">
+              </label>
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <div class="card transcript">
+        <div class="thead">
+          <div class="line"><span>Transcript</span><span class="count" id="segmentCount">0 lines</span></div>
+          <input type="text" id="searchInput" placeholder="Search in the transcript ...">
+        </div>
+        <div class="list" id="transcriptList">
+          <div class="notice" id="noTranscriptNotice">
+            <p class="big">No transcript yet</p>
+            <p>The full text will appear here when the translation is finished. Click any line to jump to that moment in the video.</p>
+          </div>
+        </div>
+      </div>
+
+    </aside>
+  </main>
+
+  <div id="toast" class="toast"></div>
+
+  <script nonce="__NONCE__">
+    // ---------- State ----------
+    let subtitles = [];
+    let activeSubIndex = -1;
+    let viewMode = 'text';            // text = translation, src = original, both
+    let selectedFile = null;
+    let currentVideoURL = null;
+    let trackURL = null;
+    let activeXhr = null;
+    let pollTimer = null;
+    let resultFromServer = false;
+    let busy = false;
+
+    const $ = (id) => document.getElementById(id);
+    const video = $('mainVideo');
+    const NOTICE = $('noTranscriptNotice');   // kept: it is taken out of the page while lines are shown
+
+    // ---------- Helpers ----------
+    function escapeHtml(s) {
+      return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+              .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+    function escapeRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+    const p2 = (n) => String(n).padStart(2, '0');
+    function formatTime(sec) {
+      if (isNaN(sec)) return '00:00';
+      const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = Math.floor(sec % 60);
+      return h > 0 ? `${p2(h)}:${p2(m)}:${p2(s)}` : `${p2(m)}:${p2(s)}`;
+    }
+    function vttTime(sec) {
+      const ms = Math.round(sec * 1000);
+      return `${p2(Math.floor(ms / 3600000))}:${p2(Math.floor(ms % 3600000 / 60000))}:${p2(Math.floor(ms % 60000 / 1000))}.${String(ms % 1000).padStart(3, '0')}`;
+    }
+    function showToast(msg) {
+      const t = $('toast');
+      t.innerText = msg; t.classList.add('show');
+      clearTimeout(showToast.t);
+      showToast.t = setTimeout(() => t.classList.remove('show'), 3500);
+    }
+    function displayText(sub) {
+      if (viewMode === 'src' && sub.src) return sub.src;
+      if (viewMode === 'both' && sub.src) return sub.src + '\n' + sub.text;
+      return sub.text;
+    }
+    function showError(msg) { $('errorBox').innerText = msg; $('errorBox').classList.remove('hidden'); }
+    function clearMessages() {
+      $('errorBox').classList.add('hidden'); $('warnBox').classList.add('hidden');
+    }
+
+    // ---------- Subtitles on the video (a normal browser subtitle track) ----------
+    function rebuildTrack() {
+      if (trackURL) { URL.revokeObjectURL(trackURL); trackURL = null; }
+      const old = video.querySelector('track');
+      if (old) old.remove();
+      if (!subtitles.length) return;
+      let vtt = 'WEBVTT\n\n';
+      subtitles.forEach((s, i) => {
+        const text = displayText(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/-->/g, '--&gt;')
+                                   .replace(/\n+/g, '\n');
+        vtt += `${i + 1}\n${vttTime(s.start)} --> ${vttTime(Math.max(s.end, s.start + 0.05))}\n${text}\n\n`;
+      });
+      trackURL = URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' }));
+      const tr = document.createElement('track');
+      tr.kind = 'subtitles'; tr.label = 'Translation'; tr.srclang = 'en'; tr.default = true;
+      tr.src = trackURL;
+      video.appendChild(tr);
+      tr.track.mode = 'showing';
+    }
+
+    // ---------- Step state ----------
+    function updateControls() {
+      $('startBtn').disabled = busy || !selectedFile;
+      $('cancelBtn').classList.toggle('hidden', !busy);
+      $('startBtn').classList.toggle('hidden', busy);
+      $('chooseLabel').classList.toggle('disabled', busy);
+      for (const id of ['sourceSel', 'targetSel', 'whisperSel']) $(id).disabled = busy;
+      const hint = $('hint');
+      hint.classList.toggle('hidden', busy);
+      if (!selectedFile) hint.innerText = 'First, choose a video (step 1).';
+      else if (resultFromServer) hint.innerText = 'Done. Press play on the video to see the subtitles.';
+      else hint.innerText = 'Ready. Press "Start translating". Long videos take a while.';
+    }
+
+    function showProgress(text, fraction) {
+      const box = $('progressBox');
+      if (!box.firstChild) {
+        box.innerHTML = '<div class="progressTop"><span id="progressText"></span><span id="progressPct"></span></div>' +
+                        '<div class="bar"><div id="progressBar"></div></div>';
+      }
+      const pct = Math.round(fraction * 100);
+      $('progressText').innerText = text;
+      $('progressPct').innerText = pct + '%';
+      $('progressBar').style.width = pct + '%';
+      box.classList.remove('hidden');
+    }
+
+    // ---------- Setup: fill the language lists ----------
+    async function loadConfig() {
+      try {
+        const cfg = await (await fetch('/api/config')).json();
+        for (const l of cfg.languages) {
+          if (l.whisper) {
+            const o = document.createElement('option');
+            o.value = l.whisper; o.textContent = l.name; $('sourceSel').appendChild(o);
+          }
+          const t = document.createElement('option');
+          t.value = l.nllb; t.textContent = l.name; $('targetSel').appendChild(t);
+        }
+        $('targetSel').value = 'eng_Latn';
+        for (const w of cfg.whisper) {
+          const o = document.createElement('option');
+          o.value = w; o.textContent = w; $('whisperSel').appendChild(o);
+        }
+        if (!cfg.whisper.length || !cfg.translator) showError('Models are missing. Run download_models.py once.');
+      } catch (e) {
+        showError('Cannot reach the local program. Is app.py still running?');
+      }
+      updateControls();
+      pollOnce(true);      // pick up a job that is already running or finished
+    }
+
+    // ---------- Step 1: choose a video ----------
+    $('videoInput').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      selectedFile = file;
+      $('fileName').innerText = file.name;
+      $('fileName').title = file.name;
+      if (resultFromServer) {            // old result belongs to the old video
+        subtitles = []; resultFromServer = false; activeSubIndex = -1;
+        $('resultBox').classList.add('hidden');
+        $('setupCard').classList.remove('done');
+        rebuildTrack(); renderTranscriptList();
+      }
+      clearMessages();
+      if (currentVideoURL) URL.revokeObjectURL(currentVideoURL);
+      currentVideoURL = URL.createObjectURL(file);     // plays from your disk
+      video.src = currentVideoURL;
+      video.classList.remove('hidden');
+      $('placeholder').classList.add('hidden');
+      updateControls();
+      e.target.value = '';
+    });
+
+    // ---------- Step 3: start ----------
+    $('startBtn').addEventListener('click', () => {
+      if (!selectedFile || busy) return;
+      subtitles = []; activeSubIndex = -1; resultFromServer = false;
+      $('resultBox').classList.add('hidden');
+      $('setupCard').classList.remove('done');
+      clearMessages(); rebuildTrack(); renderTranscriptList();
+      busy = true; updateControls();
+      showProgress('Sending the video to the local program ...', 0);
+
+      const params = new URLSearchParams({
+        target: $('targetSel').value, source: $('sourceSel').value,
+        whisper: $('whisperSel').value, name: selectedFile.name,
+      });
+      const xhr = new XMLHttpRequest();
+      activeXhr = xhr;
+      xhr.open('POST', '/api/start?' + params.toString());
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) showProgress(`Sending the video to the local program ... ${Math.round(e.loaded / e.total * 100)}%`, 0);
+      };
+      xhr.onload = () => {
+        activeXhr = null;
+        if (xhr.status === 202) { startPolling(); return; }
+        let msg = 'Could not start.';
+        try { msg = JSON.parse(xhr.responseText).error || msg; } catch (_) {}
+        busy = false; $('progressBox').classList.add('hidden'); updateControls(); showError(msg);
+      };
+      xhr.onerror = () => {
+        activeXhr = null; busy = false; $('progressBox').classList.add('hidden'); updateControls();
+        showError('The upload was refused or interrupted. Look at the terminal window for the reason.');
+      };
+      xhr.onabort = () => {
+        activeXhr = null; busy = false; $('progressBox').classList.add('hidden'); updateControls();
+      };
+      xhr.send(selectedFile);
+    });
+
+    $('cancelBtn').addEventListener('click', async () => {
+      if (activeXhr) activeXhr.abort();
+      try { await fetch('/api/cancel', { method: 'POST' }); } catch (_) {}
+    });
+
+    function startPolling() {
+      clearInterval(pollTimer);
+      pollTimer = setInterval(() => pollOnce(false), 700);
+      pollOnce(false);
+    }
+
+    async function pollOnce(firstLoad) {
+      let s;
+      try { s = await (await fetch('/api/status')).json(); } catch (_) { return; }
+      if (['uploading', 'transcribing', 'translating'].includes(s.state)) {
+        if (firstLoad && !busy) { busy = true; updateControls(); startPolling(); }
+        showProgress(s.message, s.fraction);
+      } else if (s.state === 'done') {
+        clearInterval(pollTimer);
+        busy = false; $('progressBox').classList.add('hidden');
+        if (!resultFromServer) await loadResult(s);
+        updateControls();
+      } else if (s.state === 'error') {
+        clearInterval(pollTimer);
+        busy = false; $('progressBox').classList.add('hidden'); updateControls();
+        showError(s.error);
+      } else if (s.state === 'cancelled') {
+        clearInterval(pollTimer);
+        busy = false; $('progressBox').classList.add('hidden'); updateControls();
+        showToast('Cancelled.');
+      }
+      if (s.warning) { $('warnBox').innerText = s.warning; $('warnBox').classList.remove('hidden'); }
+    }
+
+    async function loadResult(s) {
+      const r = await (await fetch('/api/result')).json();
+      subtitles = r.segments.map((seg, i) => ({ id: i, start: seg.start, end: seg.end, src: seg.src, text: seg.text }));
+      activeSubIndex = -1; resultFromServer = true;
+      $('searchInput').value = '';
+      rebuildTrack(); renderTranscriptList();
+      $('infoLine').innerText = `Heard: ${r.detected_name}  ->  Translated to: ${r.target_name}` +
+        (s.confidence ? `   (language detection ${Math.round(s.confidence * 100)}% sure)` : '');
+      $('resultBox').classList.remove('hidden');
+      $('setupCard').classList.add('done');          // fold the steps away, give room to the transcript
+      showToast('Done. Press play to watch with subtitles.');
+    }
+    $('againBtn').addEventListener('click', () => $('setupCard').classList.remove('done'));
+
+    // ---------- Show: translation / original / both ----------
+    $('modeSeg').addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-mode]');
+      if (!b) return;
+      viewMode = b.dataset.mode;
+      for (const x of $('modeSeg').querySelectorAll('button')) x.classList.toggle('on', x === b);
+      rebuildTrack(); renderTranscriptList();
+    });
+
+    // ---------- Open an existing subtitle file (optional) ----------
+    $('subtitleInput').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        parseSubtitleContent(ev.target.result);
+        resultFromServer = false;
+        $('resultBox').classList.add('hidden');
+        showToast(`Loaded subtitles: ${file.name}`);
+      };
+      reader.readAsText(file, 'utf-8');
+      e.target.value = '';
+    });
+
+    function parseSubtitleContent(content) {
+      subtitles = []; activeSubIndex = -1; $('searchInput').value = '';
+      const clean = content.replace(/^﻿/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+      let id = 0;
+      clean.split(/\n\s*\n/).forEach((block) => {
+        const lines = block.trim().split('\n');
+        const ti = lines.findIndex((l) => l.includes('-->'));
+        if (ti === -1) return;
+        const times = lines[ti].split('-->');
+        if (times.length !== 2) return;
+        const start = timeToSeconds(times[0]), end = timeToSeconds(times[1]);
+        const text = lines.slice(ti + 1).join('\n').replace(/<[^>]*>/g, '').trim();
+        if (!isNaN(start) && !isNaN(end) && text) subtitles.push({ id: id++, start, end, text });
+      });
+      rebuildTrack(); renderTranscriptList();
+    }
+    function timeToSeconds(str) {
+      const parts = str.trim().split(/\s+/)[0].replace(',', '.').split(':');
+      if (parts.length === 3) return parseFloat(parts[0]) * 3600 + parseFloat(parts[1]) * 60 + parseFloat(parts[2]);
+      if (parts.length === 2) return parseFloat(parts[0]) * 60 + parseFloat(parts[1]);
+      return NaN;
+    }
+
+    // ---------- Transcript list ----------
+    function highlightText(text, query) {
+      const safe = escapeHtml(text);
+      if (!query) return safe;
+      const re = new RegExp(`(${escapeRegex(escapeHtml(query))})`, 'gi');
+      return safe.replace(re, '<mark>$1</mark>');
+    }
+
+    function renderTranscriptList() {
+      const filterText = $('searchInput').value;
+      const box = $('transcriptList');
+      box.innerHTML = '';
+      const filtered = subtitles.filter((s) => displayText(s).toLowerCase().includes(filterText.toLowerCase()));
+      $('segmentCount').innerText = `${filtered.length} lines`;
+
+      if (filtered.length === 0) {
+        const [title, hint] = NOTICE.querySelectorAll('p');
+        if (subtitles.length && filterText) {
+          title.innerText = 'No matching lines';
+          hint.innerText = `Nothing in the transcript matches "${filterText}".`;
+        } else {
+          title.innerText = 'No transcript yet';
+          hint.innerText = 'The full text will appear here when the translation is finished. Click any line to jump to that moment in the video.';
+        }
+        box.appendChild(NOTICE);
+        return;
+      }
+
+      filtered.forEach((sub) => {
+        const el = document.createElement('div');
+        el.id = `transcript-item-${sub.id}`;
+        el.className = 'item' + (sub.id === activeSubIndex ? ' active' : '');
+        el.innerHTML = `<div class="t">${formatTime(sub.start)} - ${formatTime(sub.end)}</div>` +
+                       `<p>${highlightText(displayText(sub), filterText)}</p>`;
+        el.addEventListener('click', () => {
+          if (!video.src) { showToast('Choose the video first (step 1).'); return; }
+          video.currentTime = sub.start + 0.05;
+          if (video.paused) video.play();
+        });
+        box.appendChild(el);
+      });
+    }
+    $('searchInput').addEventListener('input', renderTranscriptList);
+
+    // ---------- Keep the transcript in step with the video ----------
+    video.addEventListener('timeupdate', () => {
+      if (!subtitles.length) return;
+      const t = video.currentTime;
+      const cur = subtitles.find((s) => t >= s.start && t <= s.end);
+      if (!cur || cur.id === activeSubIndex) return;
+      const prev = $(`transcript-item-${activeSubIndex}`);
+      if (prev) prev.classList.remove('active');
+      activeSubIndex = cur.id;
+      const el = $(`transcript-item-${cur.id}`);
+      if (el) {
+        el.classList.add('active');
+        // scroll only the transcript list (not the whole side panel)
+        const list = $('transcriptList');
+        if (el.offsetTop < list.scrollTop || el.offsetTop + el.offsetHeight > list.scrollTop + list.clientHeight) {
+          list.scrollTo({ top: Math.max(0, el.offsetTop - list.clientHeight / 3), behavior: 'smooth' });
+        }
+      }
+    });
+
+    // ---------- Save / copy ----------
+    $('srtBtn').addEventListener('click', () => {
+      if (resultFromServer) window.location.href = '/api/srt?kind=' + encodeURIComponent(viewMode);   // downloads a file
+    });
+    $('txtBtn').addEventListener('click', () => {
+      if (!subtitles.length) { showToast('Nothing to save yet.'); return; }
+      const text = subtitles.map((s) => `[${formatTime(s.start)} - ${formatTime(s.end)}] ${displayText(s).replace(/\n/g, ' | ')}`).join('\n');
+      const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
+      const a = document.createElement('a');
+      a.href = url; a.download = 'transcript.txt'; a.click();
+      URL.revokeObjectURL(url);
+    });
+    $('copyBtn').addEventListener('click', async () => {
+      if (!subtitles.length) { showToast('Nothing to copy yet.'); return; }
+      const text = subtitles.map((s) => displayText(s)).join('\n');
+      try { await navigator.clipboard.writeText(text); showToast('Copied to the clipboard.'); }
+      catch (_) { showToast('Copy was not allowed by the browser.'); }
+    });
+
+    loadConfig();
+  </script>
+</body>
+</html>

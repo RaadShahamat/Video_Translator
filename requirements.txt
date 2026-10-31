@@ -1,0 +1,8 @@
+# Install torch FIRST with the command that matches your graphics card, then:
+#   uv pip install -r requirements.txt     (or: python -m pip install -r requirements.txt)
+torch>=2.6
+faster-whisper>=1.1.0
+transformers>=4.40
+sentencepiece
+protobuf
+huggingface_hub
